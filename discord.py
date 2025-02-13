@@ -80,7 +80,7 @@ def generate_gemini_reply(prompt, language="id", retry_count=0):
         return None
 
 def send_message(channel_id, message_text, reply_to=None, reply_mode=True, retry_count=0):
-    """Send message to Discord with retry logic"""
+    """Send message to Discord with improved retry logic and exponential backoff"""
     if retry_count >= MAX_RETRIES:
         log_message("❌ Max retries reached for Discord API")
         return False
@@ -102,9 +102,11 @@ def send_message(channel_id, message_text, reply_to=None, reply_mode=True, retry
         )
         
         if response.status_code == 429:
-            retry_after = response.json().get('retry_after', DISCORD_RETRY_DELAY)
-            log_message(f"⏳ Rate limited by Discord, waiting {retry_after} seconds...")
-            time.sleep(retry_after)
+            retry_after = float(response.json().get('retry_after', DISCORD_RETRY_DELAY))
+            # Add exponential backoff
+            wait_time = retry_after * (2 ** retry_count)
+            log_message(f"⏳ Rate limited by Discord, waiting {wait_time} seconds...")
+            time.sleep(wait_time)
             return send_message(channel_id, message_text, reply_to, reply_mode, retry_count + 1)
             
         response.raise_for_status()
@@ -114,8 +116,10 @@ def send_message(channel_id, message_text, reply_to=None, reply_mode=True, retry
     except Exception as e:
         log_message(f"⚠️ Discord API error: {str(e)}")
         if retry_count < MAX_RETRIES:
-            log_message(f"⏳ Retrying in {DISCORD_RETRY_DELAY} seconds...")
-            time.sleep(DISCORD_RETRY_DELAY)
+            # Add exponential backoff for other errors too
+            wait_time = DISCORD_RETRY_DELAY * (2 ** retry_count)
+            log_message(f"⏳ Retrying in {wait_time} seconds...")
+            time.sleep(wait_time)
             return send_message(channel_id, message_text, reply_to, reply_mode, retry_count + 1)
         return False
 
