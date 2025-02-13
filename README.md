@@ -56,7 +56,7 @@ go to : https://aistudio.google.com/apikey
 ### 1. Buka Git Bash dan Masuk ke Direktori Proyek
 Jika belum ada, clone repository proyek terlebih dahulu:
 ```bash
- git clone <https://github.com/Madleyym/discord-gemini/tree/main>
+ git clone https://github.com/Madleyym/discord-gemini/tree/main
 ```
 Lalu masuk ke folder proyek:
 ```bash
