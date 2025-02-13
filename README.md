@@ -49,9 +49,7 @@ go to : https://aistudio.google.com/apikey
 * Create API Key
 * Copy API Key
 
-# PASTE YOUR DISCORD TOKEN & GEMINI API IN FILE .ENV
-
-## Steps to Setup
+## PASTE YOUR DISCORD TOKEN & GEMINI API IN FILE .ENV
 
 ### 1. Buka Git Bash dan Masuk ke Direktori Proyek
 Jika belum ada, clone repository proyek terlebih dahulu:
