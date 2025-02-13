@@ -79,12 +79,8 @@ def generate_gemini_reply(prompt, language="id", retry_count=0):
             return generate_gemini_reply(prompt, language, retry_count + 1)
         return None
 
-def send_message(channel_id, message_text, reply_to=None, reply_mode=True, retry_count=0):
-    """Send message to Discord with improved retry logic and exponential backoff"""
-    if retry_count >= MAX_RETRIES:
-        log_message("❌ Max retries reached for Discord API")
-        return False
-
+def send_message(channel_id, message_text, reply_to=None, reply_mode=True):
+    """Send message to Discord with improved rate limit handling"""
     headers = {
         'Authorization': f'{discord_token}',
         'Content-Type': 'application/json'
@@ -94,40 +90,33 @@ def send_message(channel_id, message_text, reply_to=None, reply_mode=True, retry
     if reply_mode and reply_to:
         payload['message_reference'] = {'message_id': reply_to}
 
-    try:
-        response = requests.post(
-            f"https://discord.com/api/v9/channels/{channel_id}/messages",
-            json=payload,
-            headers=headers
-        )
-        
-        if response.status_code == 429:
-            retry_after = float(response.json().get('retry_after', DISCORD_RETRY_DELAY))
-            # Add exponential backoff
-            wait_time = retry_after * (2 ** retry_count)
-            log_message(f"⏳ Rate limited by Discord, waiting {wait_time} seconds...")
-            time.sleep(wait_time)
-            return send_message(channel_id, message_text, reply_to, reply_mode, retry_count + 1)
+    while True:
+        try:
+            response = requests.post(
+                f"https://discord.com/api/v9/channels/{channel_id}/messages",
+                json=payload,
+                headers=headers
+            )
             
-        response.raise_for_status()
-        log_message(f"✅ Sent: {message_text}")
-        return True
-        
-    except Exception as e:
-        log_message(f"⚠️ Discord API error: {str(e)}")
-        if retry_count < MAX_RETRIES:
-            # Add exponential backoff for other errors too
-            wait_time = DISCORD_RETRY_DELAY * (2 ** retry_count)
-            log_message(f"⏳ Retrying in {wait_time} seconds...")
-            time.sleep(wait_time)
-            return send_message(channel_id, message_text, reply_to, reply_mode, retry_count + 1)
-        return False
+            if response.status_code == 429:
+                retry_after = float(response.json().get('retry_after', DISCORD_RETRY_DELAY))
+                log_message(f"⏳ Rate limited by Discord, waiting {retry_after} seconds...")
+                time.sleep(retry_after)
+                continue  # Retry immediately after timeout
+            
+            response.raise_for_status()
+            log_message(f"✅ Sent: {message_text}")
+            return True
+            
+        except Exception as e:
+            log_message(f"⚠️ Discord API error: {str(e)}")
+            return False
 
 def auto_reply(channel_id, read_delay, reply_delay, use_gemini, language, reply_mode):
     global last_message_id, bot_user_id
 
     headers = {'Authorization': f'{discord_token}'}
-
+    
     try:
         bot_info = requests.get('https://discord.com/api/v9/users/@me', headers=headers)
         bot_info.raise_for_status()
@@ -137,80 +126,84 @@ def auto_reply(channel_id, read_delay, reply_delay, use_gemini, language, reply_
         log_message(f"⚠️ Failed to get bot info: {str(e)}")
         return
 
-    consecutive_errors = 0
+    # Set initial last_message_id
+    try:
+        response = requests.get(
+            f'https://discord.com/api/v9/channels/{channel_id}/messages?limit=1',
+            headers=headers
+        )
+        response.raise_for_status()
+        messages = response.json()
+        if messages and isinstance(messages, list) and len(messages) > 0:
+            last_message_id = messages[0].get('id')
+            log_message(f"✅ Initial message ID set to: {last_message_id}")
+    except Exception as e:
+        log_message(f"⚠️ Failed to get initial message ID: {str(e)}")
+
     while True:
         try:
-            actual_read_delay = read_delay + random.uniform(1, 5)
-            actual_reply_delay = reply_delay + random.uniform(1, 5)
-
+            # Get latest messages, limit to 5 to catch any missed messages
             response = requests.get(
-                f'https://discord.com/api/v9/channels/{channel_id}/messages',
+                f'https://discord.com/api/v9/channels/{channel_id}/messages?limit=5',
                 headers=headers
             )
             
             if response.status_code == 429:
-                retry_after = response.json().get('retry_after', read_delay)
+                retry_after = float(response.json().get('retry_after', read_delay))
                 log_message(f"⏳ Rate limited, waiting {retry_after} seconds...")
                 time.sleep(retry_after)
                 continue
                 
             response.raise_for_status()
             messages = response.json()
-            consecutive_errors = 0  # Reset error counter on success
             
             if messages and isinstance(messages, list):
-                latest_message = messages[0]
-                message_id = latest_message.get('id')
-                author_id = latest_message.get('author', {}).get('id')
+                # Sort messages by ID to process them in order
+                messages.sort(key=lambda x: int(x.get('id', 0)))
                 
-                if (last_message_id is None or int(message_id) > int(last_message_id)) and author_id != bot_user_id:
-                    user_message = latest_message.get('content', '')
-                    log_message(f"📥 Received: {user_message}")
-
-                    response_text = None
-                    if use_gemini:
-                        response_text = generate_gemini_reply(user_message, language)
-                        
-                    if response_text is None:
-                        if use_gemini:
-                            log_message("⚠️ Falling back to pesan.txt")
-                        response_text = get_random_message()
-
-                    time.sleep(actual_reply_delay)
+                for message in messages:
+                    message_id = message.get('id')
+                    author_id = message.get('author', {}).get('id')
                     
-                    if send_message(channel_id, response_text, message_id if reply_mode else None, reply_mode):
-                        last_message_id = message_id
+                    # Check if this is a new message from someone else
+                    if (last_message_id is None or int(message_id) > int(last_message_id)) and author_id != bot_user_id:
+                        user_message = message.get('content', '')
+                        log_message(f"📥 Received new message: {user_message}")
 
-            time.sleep(actual_read_delay)
+                        response_text = None
+                        if use_gemini:
+                            response_text = generate_gemini_reply(user_message, language)
+                            
+                        if response_text is None:
+                            if use_gemini:
+                                log_message("⚠️ Falling back to pesan.txt")
+                            response_text = get_random_message()
+
+                        # Wait before replying
+                        if reply_delay > 0:
+                            time.sleep(reply_delay)
+                        
+                        # Send the reply
+                        if send_message(channel_id, response_text, message_id if reply_mode else None, reply_mode):
+                            last_message_id = message_id
+                            log_message(f"✅ Updated last message ID to: {last_message_id}")
+
+            # Wait before checking for new messages
+            if read_delay > 0:
+                time.sleep(read_delay)
             
         except Exception as e:
             log_message(f"⚠️ Error in main loop: {str(e)}")
-            consecutive_errors += 1
-            
-            if consecutive_errors >= 5:
-                log_message("❌ Too many consecutive errors, waiting 5 minutes...")
-                time.sleep(300)
-                consecutive_errors = 0
-            else:
-                time.sleep(actual_read_delay)
+            time.sleep(read_delay)
 
 def random_message_mode(channel_id, interval):
     log_message("✅ Random message mode started")
-    consecutive_errors = 0
     
     while True:
         try:
             message_text = get_random_message()
-            if send_message(channel_id, message_text, reply_mode=False):
-                consecutive_errors = 0
-                actual_interval = interval + random.uniform(1, 5)
-                time.sleep(actual_interval)
-            else:
-                consecutive_errors += 1
-                if consecutive_errors >= 5:
-                    log_message("❌ Too many consecutive errors, waiting 5 minutes...")
-                    time.sleep(300)
-                    consecutive_errors = 0
+            send_message(channel_id, message_text, reply_mode=False)
+            time.sleep(interval)
                 
         except Exception as e:
             log_message(f"⚠️ Error in random message mode: {str(e)}")
