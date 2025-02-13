@@ -2,30 +2,25 @@
 
 * Tutorial with VIDEO : https://youtu.be/B6IkggY6ct8
 
+## Prerequisites
+Pastikan kamu sudah menginstal:
+- [Python](https://www.python.org/downloads/) (Centang **"Add Python to PATH"** saat instalasi!)
+- Git Bash (jika belum punya, unduh dari [Git for Windows](https://git-scm.com/downloads))
+
 # Get your discord token, different ways:
 
-First method:
+### First method:
+1. Open your browser and activate developer mode
+2. Login your discord account
+3. Go to developer mode and click on XHR tab
+4. Find login request and click
+5. Go to Responses tab and find token value
+6. Copy that token
 
-Open your browser and activate developer mode
-
-Login your discord account
-
-Go to developer mode and click on XHR tab
-
-Find login request and click
-
-Go to Responses tab and find token value
-
-Copy that token
-
-Second method:
-
-Make sure that you already login into your discord account
-
-Go to Developers tool in your browser
-
-Find javascript console, and paste code below:
-
+### Second method:
+1. Make sure that you already login into your discord account
+2. Go to Developers tool in your browser
+3. Find javascript console, and paste code below:
 
 ```
 (
@@ -46,7 +41,6 @@ Find javascript console, and paste code below:
 ).exports.default.getToken()
 ```
 
-
 # HOW TO GET GEMINI API :
 
 go to : https://aistudio.google.com/apikey
@@ -57,6 +51,55 @@ go to : https://aistudio.google.com/apikey
 
 # PASTE YOUR DISCORD TOKEN & GEMINI API IN FILE .ENV
 
+## Steps to Setup
+
+### 1. Buka Git Bash dan Masuk ke Direktori Proyek
+Jika belum ada, clone repository proyek terlebih dahulu:
+```bash
+ git clone <repo_url>
+```
+Lalu masuk ke folder proyek:
+```bash
+ cd discord-gemini
+```
+
+### 2. Buat Virtual Environment
+Jalankan perintah berikut untuk membuat virtual environment:
+```bash
+ python -m venv discord
+```
+Jika `python` tidak dikenali, coba:
+```bash
+ python3 -m venv discord
+```
+
+### 3. Aktifkan Virtual Environment
+Karena di **Windows**, jalankan perintah berikut:
+```bash
+ source discord/Scripts/activate
+```
+Jika berhasil, prompt akan berubah menjadi `(discord)`, menandakan virtual environment aktif.
+
+### 4. Install Dependencies
+Jalankan:
+```bash
+ pip install -r requirements.txt
+```
+
+### 5. Menjalankan Proyek
+Setelah instalasi selesai, kamu bisa menjalankan proyek sesuai dengan instruksi yang ada di repository ini.
+
+### 6. (Opsional) Menonaktifkan Virtual Environment
+Jika ingin keluar dari virtual environment, jalankan:
+```bash
+ deactivate
+```
+
+## Troubleshooting
+Jika ada error seperti **"python not found"**, pastikan:
+- Python sudah ditambahkan ke PATH
+- Coba jalankan dengan `python3` daripada `python`
+
 # Youtube Channel :
 * https://www.youtube.com/@SHAREITHUB_COM
 
@@ -65,3 +108,7 @@ go to : https://aistudio.google.com/apikey
 
 # Group Telegram :
 * https://t.me/DISS_SHAREITHUB
+
+---
+Semoga berhasil! 🚀 Jika ada kendala, silakan cek dokumentasi atau tanyakan di forum komunitas. 😃
+
