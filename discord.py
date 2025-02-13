@@ -22,51 +22,62 @@ def log_message(message):
     print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {message}")
 
 def generate_reply(prompt, use_google_ai=True, use_file_reply=False, language="id"):
-    """Membuat balasan, menghindari duplikasi jika menggunakan Google Gemini AI"""
-
-    global last_ai_response  # Gunakan variabel global agar dapat diakses di seluruh sesi
-
+    """Membuat balasan dengan penanganan rate limit"""
+    
+    global last_ai_response
+    
     if use_file_reply:
         log_message("💬 Menggunakan pesan dari file sebagai balasan.")
         return {"candidates": [{"content": {"parts": [{"text": get_random_message()}]}}]}
-
+    
     if use_google_ai:
         # Pilihan bahasa
         if language == "en":
             ai_prompt = f"{prompt}\n\nRespond with only one sentence in casual urban English, like a natural conversation, and do not use symbols."
         else:
             ai_prompt = f"{prompt}\n\nBerikan 1 kalimat saja dalam bahasa gaul daerah Jakarta seperti obrolan dan jangan gunakan simbol apapun."
-
+            
         url = f'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={google_api_key}'
         headers = {'Content-Type': 'application/json'}
         data = {'contents': [{'parts': [{'text': ai_prompt}]}]}
-
-        for attempt in range(3):  # Coba sampai 3 kali jika AI mengulang pesan yang sama
+        
+        max_retries = 5
+        base_delay = 1  # Start with 1 second delay
+        
+        for attempt in range(max_retries):
             try:
                 response = requests.post(url, headers=headers, json=data)
+                
+                if response.status_code == 429:  # Rate limit exceeded
+                    retry_delay = base_delay * (2 ** attempt)  # Exponential backoff
+                    log_message(f"⚠️ Rate limit exceeded, waiting {retry_delay} seconds before retry...")
+                    time.sleep(retry_delay)
+                    continue
+                    
                 response.raise_for_status()
                 ai_response = response.json()
-
-                # Ambil teks dari respons AI
-                response_text = ai_response['candidates'][0]['content']['parts'][0]['text']
-
-                # Cek apakah respons AI sama dengan yang terakhir
-                if response_text == last_ai_response:
-                    log_message("⚠️ AI memberikan balasan yang sama, mencoba ulang...")
-                    continue  # Coba lagi dengan permintaan baru
                 
-                last_ai_response = response_text  # Simpan respons terbaru
+                # Check for duplicate response
+                response_text = ai_response['candidates'][0]['content']['parts'][0]['text']
+                if response_text == last_ai_response:
+                    if attempt < max_retries - 1:
+                        log_message("⚠️ Duplicate response, retrying...")
+                        time.sleep(base_delay)
+                        continue
+                
+                last_ai_response = response_text
                 return ai_response
-
+                
             except requests.exceptions.RequestException as e:
                 log_message(f"⚠️ Request failed: {e}")
-                return None
-
-        log_message("⚠️ AI terus memberikan balasan yang sama, menggunakan respons terakhir yang tersedia.")
-        return {"candidates": [{"content": {"parts": [{"text": last_ai_response or 'Maaf, tidak dapat membalas pesan.'}]}}]}
-
-    else:
-        return {"candidates": [{"content": {"parts": [{"text": get_random_message()}]}}]}
+                if attempt < max_retries - 1:
+                    retry_delay = base_delay * (2 ** attempt)
+                    log_message(f"Retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                else:
+                    return {"candidates": [{"content": {"parts": [{"text": "Maaf, sedang ada masalah dengan sistem AI. Coba lagi nanti ya!"}]}}]}
+    
+    return {"candidates": [{"content": {"parts": [{"text": get_random_message()}]}}]}
 
 def get_random_message():
     """Mengambil pesan acak dari file pesan.txt"""
